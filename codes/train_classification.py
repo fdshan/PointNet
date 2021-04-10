@@ -2,6 +2,7 @@ from __future__ import print_function
 import argparse
 import os
 import random
+import numpy as np
 import torch
 import torch.nn.parallel
 import torch.optim as optim
@@ -57,7 +58,6 @@ classifier.cuda()
 num_batch = len(dataset) / opt.batchSize
 
 for epoch in range(opt.nepoch):
-    # scheduler.step()
     for i, data in enumerate(dataloader, 0):
         points, target = data
         target = target[:, 0]
@@ -68,39 +68,27 @@ for epoch in range(opt.nepoch):
         # back-propagate loss = cls_loss + 0.001*feature_transform_regularizer()
         optimizer.zero_grad()
         classifier = classifier.train()
-        pred, trans, trans_feat = classifier(points)
+        pred, trans, trans_feat, critical_points = classifier(points)
+        # print(critical_points.shape)
+        np.savetxt("critical_points.txt", critical_points.cpu().detach().numpy())
         # loss = F.cross_entropy(pred, target) + 0.001 * feature_transform_regularizer(trans)
         loss = F.nll_loss(pred, target)
         if opt.feature_transform:
-            loss += 0.001 * feature_transform_regularizer(trans)
+            loss += 0.001 * feature_transform_regularizer(trans_feat)
         loss.backward()
         optimizer.step()
         pred_label = pred.data.max(1)[1]
         correct = pred_label.eq(target.data).cpu().sum()
 
-        #print('epoch %d,%d training loss: %f accuracy: %f' % (epoch, i, loss.item(), correct.item() / float(opt.batchSize)))
-        print('epoch %d,%d training loss: %f' % (epoch, i, loss.item()))
-    torch.save(classifier.state_dict(), '%s/cls_model_%d.pth' % (opt.outf, epoch))
-    print('%s weights saved!' % epoch)
+        print('[{0},{1}] training loss: {2}'.format(epoch, i, loss.item()))
+    if opt.feature_transform:
+        torch.save(classifier.state_dict(), '{0}/weights_with_transform/cls_model_{1}.pth'.format(opt.outf, epoch))
+    else:
+        torch.save(classifier.state_dict(), '{0}/weights_without_transform/cls_model_{1}.pth'.format(opt.outf, epoch))
+    print('{} weights saved!'.format(epoch))
 
-print('Finish!')
-'''
-total_correct = 0
-total_testset = 0
-for i, data in tqdm(enumerate(testloader, 0)):
-    points, target = data
-    target = target[:, 0]
-    points = points.transpose(2, 1)
-    points, target = points.cuda(), target.cuda()
-    classifier = classifier.eval()
-    pred, _, _ = classifier(points)
-    pred_choice = pred.data.max(1)[1]
-    correct = pred_choice.eq(target.data).cpu().sum()
-    total_correct += correct.item()
-    total_testset += points.size()[0]
+print('Train Finish!')
 
-print("final accuracy {}".format(total_correct / float(total_testset)))
-'''
 
 
 

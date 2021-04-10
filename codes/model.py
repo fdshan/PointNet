@@ -49,39 +49,40 @@ class TNet(nn.Module):
         self.fc3 = nn.Linear(256, k*k, bias=False)
 
         # add bias 1, k*k
-        self.bias = torch.rand((1, k*k), dtype=torch.float32, device=torch.device('cuda'), requires_grad=True)
+        # self.bias = torch.rand((1, k*k), dtype=torch.float32, device=torch.device('cuda'), requires_grad=True)
+        self.bias = torch.rand((1, k*k), dtype=torch.float32, device=torch.device('cpu'), requires_grad=True)
         # reshape
     
     def forward(self, x):
         # print('TNet')
         x = torch.unsqueeze(x, dim=3)  # [b, 3||64, n, 1]
         x = self.conv1(x)  # [b, 64, n, 1]
-        #print('TNet conv1 ', x.shape)
+        # print('TNet conv1 ', x.shape)
         x = self.conv2(x)  # [b, 128, n, 1]
-        #print('TNet conv2 ', x.shape)
+        # print('TNet conv2 ', x.shape)
         x = self.conv3(x)  # [b, 1024, n, 1]
-        #print('TNet conv3 ', x.shape)
+        # print('TNet conv3 ', x.shape)
         # max pool
         x = torch.max(x, dim=2)[0]  # [b, 1024, 1]
-        #print('TNet after max ', x.shape)
+        # print('TNet after max ', x.shape)
         x = x.view(-1, 1024)  # [b, 1024]
-        #print('TNet after max view ', x.shape)
+        # print('TNet after max view ', x.shape)
 
         x = self.fc1(x)  # [b, 512]
-        #print('TNet fc1 ', x.shape)
+        # print('TNet fc1 ', x.shape)
         x = self.fc2(x)  # [b, 256]
-        #print('TNet fc2 ', x.shape)
+        # print('TNet fc2 ', x.shape)
         x = self.fc3(x)  # [b, 9||64^2]
-        #print('TNet fc3 ', x.shape)
+        # print('TNet fc3 ', x.shape)
 
         # k = torch.sqrt(x.shape[1])  # k
         x = x.view(-1, self.k * self.k)  # [b, 9||64^2]
-        #print('TNet view k*k ', x.shape)
+        # print('TNet view k*k ', x.shape)
         x = torch.add(x, self.bias)
 
         # reshape
         x = x.view(-1, self.k, self.k)  # [b, 3, 3]
-        #print('TNet final reshape n*k*k ', x.shape)
+        # print('TNet final reshape n*k*k ', x.shape)
         return x
 
 
@@ -117,18 +118,19 @@ class PointNetfeat(nn.Module):
 
     def forward(self, x):  # x [b, 3, n]
         n_pts = x.size()[2]
-        #print('PointNetfeat input x', x.shape)
+        origin_points = x
+        # print('PointNetfeat input x', x.shape)
         # You will need these extra outputs:
         # trans = output of applying TNet function to input
         # trans_feat = output of applying TNet function to features (if feature_transform is true)
         trans = self.trans1(x)  # [b, 3, 3]
-        #print('PointNetfeat Tnet layer, k=3', trans.shape)
+        # print('PointNetfeat Tnet layer, k=3', trans.shape)
         x = torch.bmm(trans, x)  # [b, 3, n]
-        #print('PointNetfeat bmm', x.shape)
+        # print('PointNetfeat bmm', x.shape)
         x = torch.unsqueeze(x, dim=3)  # [b, 3, n, 1]
-        #print('PointNetfeat add dim', x.shape)
+        # print('PointNetfeat add dim', x.shape)
         x = self.conv1(x)  # [b, 64, n, 1]
-        #print('PointNetfeat conv1', x.shape)
+        # print('PointNetfeat conv1', x.shape)
         x = torch.squeeze(x, dim=3)  # [b, 64, n]
 
         if self.feature_transform:
@@ -147,14 +149,22 @@ class PointNetfeat(nn.Module):
         # print('PointNetfeat conv2', x.shape)
         x = self.conv3(x)  # [b, 1024, n, 1]
         # print('PointNetfeat conv3', x.shape)
+        x = torch.squeeze(x, dim=3)  # [b, 1024, n]
 
         # max pool
-        x = torch.max(x, dim=2)[0]  # [b, 1024, 1]
+        indices = torch.max(x, dim=2)[1]
+        # print('ind shape is', indices.shape)
+        # print(indices[0])
+        x = torch.max(x, dim=2)[0]  # [b, 1024]
         # print('PointNetfeat after max', x.shape)
+
+        critical_points = torch.index_select(origin_points[0], 1, indices[0])
+        critical_points = torch.transpose(critical_points, 0, 1)
+
         x = x.view(-1, 1024)
 
         if self.global_feat:  # This shows if we're doing classification or segmentation
-            return x, trans, trans_feat
+            return x, trans, trans_feat, critical_points
         else:
             x = x.view(-1, 1024, 1).repeat(1, 1, n_pts)
             return torch.cat([x, pointfeat], 1), trans, trans_feat
@@ -174,11 +184,11 @@ class PointNetCls(nn.Module):
         self.relu = nn.ReLU()
 
     def forward(self, x):
-        x, trans, trans_feat = self.feat(x)
+        x, trans, trans_feat, critical_points = self.feat(x)
         x = F.relu(self.bn1(self.fc1(x)))
         x = F.relu(self.bn2(self.dropout(self.fc2(x))))
         x = self.fc3(x)
-        return F.log_softmax(x, dim=1), trans, trans_feat
+        return F.log_softmax(x, dim=1), trans, trans_feat, critical_points
 
 
 class PointNetDenseCls(nn.Module):
@@ -215,34 +225,34 @@ class PointNetDenseCls(nn.Module):
         # trans = output of applying TNet function to input
         # trans_feat = output of applying TNet function to features (if feature_transform is true)
         # (you can directly get them from PointNetfeat)
-        print('PointNetDenseCls input x', x.shape)
+        # print('PointNetDenseCls input x', x.shape)
         x, trans, trans_feat = self.feature(x)  # [b, 1088, n]
-        print('PointNetDenseCls after PointNetfeat', x.shape)
+        # print('PointNetDenseCls after PointNetfeat', x.shape)
         x = torch.unsqueeze(x, dim=3)  # [b, 1088, n, 1]
         x = self.conv1(x)  # [b, 512, n, 1]
-        print('PointNetDenseCls conv1', x.shape)
+        # print('PointNetDenseCls conv1', x.shape)
         x = self.conv2(x)  # [b, 256, n, 1]
-        print('PointNetDenseCls conv2', x.shape)
+        # print('PointNetDenseCls conv2', x.shape)
         x = self.conv3(x)  # [b, 128, n, 1]
-        print('PointNetDenseCls conv3', x.shape)
+        # print('PointNetDenseCls conv3', x.shape)
         x = self.conv4(x)  # [b, 4, n, 1]
-        print('PointNetDenseCls conv4', x.shape)
+        # print('PointNetDenseCls conv4', x.shape)
         x = torch.squeeze(x, dim=3)  # [b, 4, n] k=4
         x = x.transpose(2, 1)  # [b, n, k]
-        print('PointNetDenseCls after transpose', x.shape)
+        # print('PointNetDenseCls after transpose', x.shape)
         x = F.softmax(x, dim=2)
-        print('PointNetDenseCls after softmax', x.shape)
+        # print('PointNetDenseCls after softmax', x.shape)
         return x, trans, trans_feat
 
 
 def feature_transform_regularizer(trans):
     # compute |((trans * trans.transpose) - I)|^2
-    b, k, _ = trans.shape
+    b, k, _ = trans.shape  # b,k,n
     trans_t = torch.transpose(trans, 1, 2)
-    i = torch.eye(k, device=torch.device('cuda'))
-    i = i.repeat(b, 1, 1)
+    i = torch.eye(k, device=torch.device('cuda'))  # identity matrix
+    i = i.repeat(b, 1, 1)  # b,k,k
     temp = torch.tensor(torch.bmm(trans, trans_t) - i)
-    loss = torch.norm(temp, dim=[1, 2])
+    loss = torch.norm(temp, dim=[1, 2])  # tensor, list
     loss = torch.mean(loss)
     return loss
 

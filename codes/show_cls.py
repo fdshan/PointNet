@@ -9,7 +9,7 @@ from model import PointNetCls
 import torch.nn.functional as F
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--model', type=str, default = '',  help='model path')
+parser.add_argument('--model', type=str, default='',  help='model path')
 parser.add_argument('--num_points', type=int, default=2500, help='input batch size')
 
 opt = parser.parse_args()
@@ -33,11 +33,11 @@ for i, data in enumerate(test_dataloader, 0):
     target = target[:, 0]
     points = points.transpose(2, 1)
     points, target = points.cuda(), target.cuda()
-    # classifier = classifier.eval()
+
     pred, _, _ = classifier(points)
     pred_label = pred.data.max(1)[1]
     correct = pred_label.eq(target.data).cpu().sum()
     total_correct += correct.item()
     total_testset += points.size()[0]
 
-print("final accuracy {}".format(total_correct / float(total_testset)))
+print("Test accuracy {}".format(total_correct / float(total_testset)))
