@@ -9,14 +9,17 @@ from model import PointNetCls
 import torch.nn.functional as F
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--model', type=str, default='',  help='model path')
-parser.add_argument('--num_points', type=int, default=2500, help='input batch size')
+parser.add_argument('--model', type=str, default='', help='model path')
+parser.add_argument('--num_points', type=int,
+                    default=2500, help='input batch size')
 
 opt = parser.parse_args()
 print(opt)
 
-test_dataset = ShapeNetDataset(root=opt.dataset, classification=True, npoints=opt.num_points)
-test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=opt.batchSize, shuffle=True, num_workers=int(opt.workers))
+test_dataset = ShapeNetDataset(
+    root=opt.dataset, classification=True, npoints=opt.num_points)
+test_dataloader = torch.utils.data.DataLoader(
+    test_dataset, batch_size=opt.batchSize, shuffle=True, num_workers=int(opt.workers))
 
 
 classifier = PointNetCls(k=len(test_dataset.classes))

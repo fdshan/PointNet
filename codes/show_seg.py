@@ -18,7 +18,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--model', type=str, default='', help='model path')
 parser.add_argument('--idx', type=int, default=0, help='model index')
 parser.add_argument('--dataset', type=str, default='', help='dataset path')
-parser.add_argument('--class_choice', type=str, default='', help='class choice')
+parser.add_argument('--class_choice', type=str,
+                    default='', help='class choice')
 
 opt = parser.parse_args()
 print(opt)
@@ -57,9 +58,9 @@ pred, _, _ = classifier(point)
 pred_choice = pred.data.max(2)[1]
 print(pred_choice)
 
-#print(pred_choice.size())
+# print(pred_choice.size())
 pred_color = cmap[pred_choice.numpy()[0], :]
 # pred_color = cmap[pred_choice.cpu().numpy()[0], :]
 
-#print(pred_color.shape)
+# print(pred_color.shape)
 showpoints(point_np, gt, pred_color)
